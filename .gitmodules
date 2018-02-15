@@ -1,0 +1,3 @@
+[submodule "GUI/src/cmake"]
+	path = GUI/src/cmake
+	url = https://github.com/jrl-umi3218/jrl-cmakemodules.git

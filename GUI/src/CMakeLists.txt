@@ -1,5 +1,15 @@
 cmake_minimum_required(VERSION 2.6.0)
 
+include(cmake/base.cmake)
+include(cmake/pkg-config.cmake)
+
+set(PROJECT_NAME ElasticFusion)
+set(PROJECT_DESCRIPTION ElasticFusion)
+set(PROJECT_URL https://github.com/mp3guy/ElasticFusion)
+set(PROJECT_DEBUG_POSTFIX "_d")
+
+set(CXX_DISABLE_WERROR 1)
+
 project(ElasticFusion)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -26,6 +36,8 @@ find_package(CUDA REQUIRED)
 find_package(OpenNI2 REQUIRED)
 find_package(efusion REQUIRED)
 find_package(SuiteSparse REQUIRED)
+add_required_dependency(tf2_eigen)
+add_required_dependency(tf2_ros)
 
 if(WIN32)
   find_package(RealSense QUIET)
@@ -91,6 +103,8 @@ target_link_libraries(ElasticFusion
                       ${BLAS_LIBRARIES}
                       ${LAPACK_LIBRARIES}
 )
+pkg_config_use_dependency(ElasticFusion tf2_eigen)
+pkg_config_use_dependency(ElasticFusion tf2_ros)
 
 
 INSTALL(TARGETS ElasticFusion

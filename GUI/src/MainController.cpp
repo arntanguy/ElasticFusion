@@ -2,21 +2,22 @@
  * This file is part of ElasticFusion.
  *
  * Copyright (C) 2015 Imperial College London
- * 
- * The use of the code within this file and all code within files that 
- * make up the software that is ElasticFusion is permitted for 
- * non-commercial purposes only.  The full terms and conditions that 
- * apply to the code within this file are detailed within the LICENSE.txt 
- * file and at <http://www.imperial.ac.uk/dyson-robotics-lab/downloads/elastic-fusion/elastic-fusion-license/> 
- * unless explicitly stated.  By downloading this file you agree to 
+ *
+ * The use of the code within this file and all code within files that
+ * make up the software that is ElasticFusion is permitted for
+ * non-commercial purposes only.  The full terms and conditions that
+ * apply to the code within this file are detailed within the LICENSE.txt
+ * file and at <http://www.imperial.ac.uk/dyson-robotics-lab/downloads/elastic-fusion/elastic-fusion-license/>
+ * unless explicitly stated.  By downloading this file you agree to
  * comply with these terms.
  *
- * If you wish to use any of this code for commercial purposes then 
+ * If you wish to use any of this code for commercial purposes then
  * please email researchcontracts.engineering@imperial.ac.uk.
  *
  */
- 
+
 #include "MainController.h"
+#include <tf2_eigen/tf2_eigen.h>
 
 MainController::MainController(int argc, char * argv[])
  : good(true),
@@ -345,6 +346,38 @@ void MainController::run()
         }
 
         Eigen::Matrix4f pose = eFusion->getCurrPose();
+        {
+            std::cout << "Pose: " << pose << std::endl;
+            auto transform = tf2::eigenToTransform(Eigen::Affine3d(pose.cast<double>()));
+            transform.header.frame_id = "map";
+            transform.child_frame_id = "ElasticFusion";
+            tf_b.sendTransform(transform);
+        }
+
+        {   // Convert from right-handed Z forward (ElasticFusion) to
+            // right-handed X forward (ROS)
+
+            // Mapping ROS Elastic
+            //          +x  +z
+            //          +y  -x
+            //          +z  -y
+            Eigen::Matrix3f R_toROS = Eigen::Matrix3f::Zero();
+            R_toROS(2,0) = 1;
+            R_toROS(0,1) = -1;
+            R_toROS(1,2) = -1;
+            Eigen::Matrix4f pose_ros = Eigen::Matrix4f::Identity();
+            // First transform rotation matrix such that rotation is applied in
+            // ROS frame convention.
+            // Then rotate the coordinate system from Z forward to X forward axes
+            pose_ros.block<3,3>(0,0) = R_toROS.inverse() * pose.block<3,3>(0,0) * R_toROS;
+            // Apply the translation with X-forward convention
+            pose_ros.block<3,1>(0,3) << pose(2,3), -pose(0,3), -pose(1,3);
+            auto transform = tf2::eigenToTransform(Eigen::Affine3d(pose_ros.cast<double>()));
+            transform.header.frame_id = "map";
+            transform.child_frame_id = "ElasticFusionROS";
+            tf_b.sendTransform(transform);
+        }
+
 
         if(gui->drawRawCloud->Get() || gui->drawFilteredCloud->Get())
         {
