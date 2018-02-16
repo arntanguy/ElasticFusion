@@ -23,8 +23,10 @@
 #include "Tools/GroundTruthOdometry.h"
 #include "Tools/RawLogReader.h"
 #include "Tools/LiveLogReader.h"
+#include <ros/ros.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
+#include <std_srvs/Empty.h>
 
 #ifndef MAINCONTROLLER_H_
 #define MAINCONTROLLER_H_
@@ -32,7 +34,7 @@
 class MainController
 {
     public:
-        MainController(int argc, char * argv[]);
+        MainController(int argc, char * argv[], std::shared_ptr<ros::NodeHandle> nh);
         virtual ~MainController();
 
         void launch();
@@ -81,7 +83,14 @@ class MainController
 
         Resize * resizeStream;
     private:
+      // Publish pose
       tf2_ros::TransformBroadcaster tf_b;
+      ros::Publisher pose_pub;
+      // Reset service
+      ros::ServiceServer reset_service;
+
+    protected:
+      bool reset_callback(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
 };
 
 #endif /* MAINCONTROLLER_H_ */

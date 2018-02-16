@@ -18,8 +18,10 @@
 
 #include "MainController.h"
 #include <tf2_eigen/tf2_eigen.h>
+#include <eigen_conversions/eigen_msg.h>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
 
-MainController::MainController(int argc, char * argv[])
+MainController::MainController(int argc, char * argv[], std::shared_ptr<ros::NodeHandle> nh)
  : good(true),
    eFusion(0),
    gui(0),
@@ -29,6 +31,10 @@ MainController::MainController(int argc, char * argv[])
    resetButton(false),
    resizeStream(0)
 {
+
+    pose_pub = nh->advertise<geometry_msgs::PoseWithCovarianceStamped>("/ElasticFusion/rgb_pose", 1000);
+    reset_service = nh->advertiseService("/ElasticFusion/reset", &MainController::reset_callback, this);
+
     std::string empty;
     iclnuim = Parse::get().arg(argc, argv, "-icl", empty) > -1;
 
@@ -347,7 +353,7 @@ void MainController::run()
 
         Eigen::Matrix4f pose = eFusion->getCurrPose();
         {
-            std::cout << "Pose: " << pose << std::endl;
+            // std::cout << "Pose (z forward, x right, y down): \n" << pose << std::endl;
             auto transform = tf2::eigenToTransform(Eigen::Affine3d(pose.cast<double>()));
             transform.header.frame_id = "map";
             transform.child_frame_id = "ElasticFusion";
@@ -372,10 +378,21 @@ void MainController::run()
             pose_ros.block<3,3>(0,0) = R_toROS.inverse() * pose.block<3,3>(0,0) * R_toROS;
             // Apply the translation with X-forward convention
             pose_ros.block<3,1>(0,3) << pose(2,3), -pose(0,3), -pose(1,3);
-            auto transform = tf2::eigenToTransform(Eigen::Affine3d(pose_ros.cast<double>()));
+            Eigen::Affine3d pose_ros_affine(pose_ros.cast<double>());
+            // std::cout << "Pose ROS (x forward, y left, z up): \n" << pose_ros << std::endl;
+            auto transform = tf2::eigenToTransform(pose_ros_affine);
             transform.header.frame_id = "map";
             transform.child_frame_id = "ElasticFusionROS";
             tf_b.sendTransform(transform);
+
+
+            // PUBLISH AS PoseWithCovarianceStamped
+            geometry_msgs::PoseWithCovarianceStamped msg;
+            msg.header.frame_id = "map";
+            msg.header.stamp = ros::Time::now();
+            tf::poseEigenToMsg(pose_ros_affine, msg.pose.pose);
+            // XXX fill covariance
+            pose_pub.publish(msg);
         }
 
 
@@ -597,3 +614,12 @@ void MainController::run()
         TOCK("GUI");
     }
 }
+
+
+bool MainController::reset_callback(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res)
+{
+  std::cout << "Reset service called, resetting ElasticFusion" << std::endl;
+  *gui->reset = true;
+  return true;
+}
+

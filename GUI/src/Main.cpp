@@ -16,17 +16,26 @@
  *
  */
 
-#include "MainController.h"
 #include <ros/ros.h>
+#include "MainController.h"
 
-int main(int argc, char * argv[])
+int main(int argc, char* argv[])
 {
     ros::init(argc, argv, "ElasticFusion");
-    ros::NodeHandle nh("ElasticFusion");
+    auto nh = std::make_shared<ros::NodeHandle>("ElasticFusion");
 
-    MainController mainController(argc, argv);
+    auto th = std::thread([]() {
+        ros::Rate rt(30);
+        while (ros::ok())
+        {
+            ros::spinOnce();
+            rt.sleep();
+        }
+    });
+    MainController mainController(argc, argv, nh);
 
     mainController.launch();
+    th.join();
 
     return 0;
 }

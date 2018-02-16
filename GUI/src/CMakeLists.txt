@@ -38,6 +38,7 @@ find_package(efusion REQUIRED)
 find_package(SuiteSparse REQUIRED)
 add_required_dependency(tf2_eigen)
 add_required_dependency(tf2_ros)
+add_required_dependency(eigen_conversions)
 
 if(WIN32)
   find_package(RealSense QUIET)
@@ -105,6 +106,7 @@ target_link_libraries(ElasticFusion
 )
 pkg_config_use_dependency(ElasticFusion tf2_eigen)
 pkg_config_use_dependency(ElasticFusion tf2_ros)
+pkg_config_use_dependency(ElasticFusion eigen_conversions)
 
 
 INSTALL(TARGETS ElasticFusion
