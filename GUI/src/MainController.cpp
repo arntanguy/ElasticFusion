@@ -21,6 +21,17 @@
 #include <eigen_conversions/eigen_msg.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 
+
+#include <pcl_conversions/pcl_conversions.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <pcl_ros/point_cloud.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl/filters/voxel_grid.h>
+
+using PointT = pcl::PointXYZRGBNormal;
+using PointCloudT = pcl::PointCloud<PointT>;
+
+
 MainController::MainController(int argc, char * argv[], std::shared_ptr<ros::NodeHandle> nh)
  : good(true),
    eFusion(0),
@@ -34,8 +45,6 @@ MainController::MainController(int argc, char * argv[], std::shared_ptr<ros::Nod
 
     pose_pub = nh->advertise<geometry_msgs::PoseWithCovarianceStamped>("/ElasticFusion/rgb_pose", 1000);
     cloud_pub = nh->advertise<PointCloudT>("/ElasticFusion/cloud", 1);
-    cloud = boost::make_shared<PointCloudT>();
-    cloud->header.frame_id = "map";
     reset_service = nh->advertiseService("/ElasticFusion/reset", &MainController::reset_callback, this);
 
     std::string empty;
@@ -136,6 +145,9 @@ MainController::MainController(int argc, char * argv[], std::shared_ptr<ros::Nod
                               Resolution::getInstance().height(),
                               Resolution::getInstance().width() / 2,
                               Resolution::getInstance().height() / 2);
+
+    std::cout << "Creating Cloud Publishing Thread" << std::endl;
+    cloud_publishing_thread = std::thread(&MainController::publishPointCloudThread, this);
 }
 
 MainController::~MainController()
@@ -164,6 +176,8 @@ MainController::~MainController()
     {
         delete resizeStream;
     }
+
+    cloud_publishing_thread.join();
 }
 
 void MainController::loadCalibration(const std::string & filename)
@@ -230,7 +244,8 @@ void MainController::launch()
 
 void MainController::run()
 {
-    while(!pangolin::ShouldQuit() && !((!logReader->hasMore()) && quiet) && !(eFusion->getTick() == end && quiet))
+    running = !pangolin::ShouldQuit() && !((!logReader->hasMore()) && quiet) && !(eFusion->getTick() == end && quiet);
+    while(running)
     {
         if(!gui->pause->Get() || pangolin::Pushed(*gui->step))
         {
@@ -442,58 +457,24 @@ void MainController::run()
                                                            eFusion->getTick(),
                                                            eFusion->getTimeDelta());
 
-              // XXX Publish when needed, thread publishing,
-              // use voxel grid filter
-              static int i=0;
-              if(i++ % 50 == 0)
-              {
-                cloud->clear();
-                // XXX move somewhere else
-                Eigen::Vector4f* mapData = eFusion->getGlobalModel().downloadMap();
-                // Number of points in the map
-                const unsigned int map_size = eFusion->getGlobalModel().lastCount();
-
-                // Construct a pcl pointcloud from it
-                cloud->header.stamp = ros::Time::now().toNSec() / 1000;
-                cloud->width = map_size;
-                cloud->height = 1;
-                cloud->is_dense = true;
-
-                PointT p;
-                for (size_t i = 0; i < map_size; ++i)
-                {
-                  // need to initialize data
-                  const Eigen::Vector4f& point = mapData[(i * 3) + 0];
-                  const Eigen::Vector4f& col = mapData[(i * 3) + 1];
-                  const Eigen::Vector4f nor = -1 * mapData[(i * 3) + 2];
-
-                  // unpack color
-                  unsigned char r = int(col[0]) >> 16 & 0xFF;
-                  unsigned char g = int(col[0]) >> 8 & 0xFF;
-                  unsigned char b = int(col[0]) & 0xFF;
-
-                  // Mapping ROS Elastic
-                  //          +x  +z
-                  //          +y  -x
-                  //          +z  -y
-                  p.x = point.z();
-                  p.y = -point.x();
-                  p.z = -point.y();
-                  p.r = r;
-                  p.g = g;
-                  p.b = b;
-                  p.normal_x = nor.x();
-                  p.normal_y = nor.y();
-                  p.normal_z = nor.z();
-                  cloud->points.push_back(p);
-                }
-
-                std::cout << "publishing cloud with " << cloud->size() << " points" << std::endl;
-                cloud_pub.publish(cloud);
-              }
             }
             glFinish();
             TOCK("Global");
+        }
+
+
+        static int i=0;
+        download_cloud = i++%50==0;
+        if(download_cloud)
+        {
+          std::cout << "Retrieving pointcloud from GPU" << std::endl;
+          std::lock_guard<std::mutex> lock(cloud_mutex);
+          mapData = eFusion->getGlobalModel().downloadMap();
+          // Number of points in the map
+          mapSize = eFusion->getGlobalModel().lastCount();
+          download_cloud = false;
+          // Publish cloud
+          do_cloud_publishing = true;
         }
 
         if(eFusion->getLost())
@@ -668,11 +649,82 @@ void MainController::run()
     }
 }
 
-
 bool MainController::reset_callback(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res)
 {
-  std::cout << "Reset service called, resetting ElasticFusion" << std::endl;
-  *gui->reset = true;
-  return true;
+    std::cout << "Reset service called, resetting ElasticFusion" << std::endl;
+    *gui->reset = true;
+    return true;
 }
+
+
+void MainController::publishPointCloudThread()
+{
+    std::cout << "publish pointcloud thread started" << std::endl;
+    while(eFusion == nullptr || running)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(33));
+        if(eFusion == nullptr) continue;
+        if(gui->publishCloud->Get() && do_cloud_publishing)
+        {
+            // Acutal publishing
+            std::lock_guard<std::mutex> lock(cloud_mutex);
+
+            PointCloudT::Ptr cloud = boost::make_shared<PointCloudT>();
+            cloud->header.frame_id = "map";
+            // Construct a pcl pointcloud from it
+            cloud->header.stamp = ros::Time::now().toNSec() / 1000;
+            cloud->width = 0;
+            cloud->height = 1;
+            cloud->is_dense = true;
+
+            PointT p;
+            for (size_t i = 0; i < mapSize; ++i)
+            {
+                // need to initialize data
+                const Eigen::Vector4f& point =      mapData[(i * 3) + 0];
+                const Eigen::Vector4f& col   =      mapData[(i * 3) + 1];
+                const Eigen::Vector4f nor    = -1 * mapData[(i * 3) + 2];
+
+                if(point[3] > gui->confidenceThreshold->Get())
+                {
+                    // unpack color
+                    unsigned char r = int(col[0]) >> 16 & 0xFF;
+                    unsigned char g = int(col[0]) >> 8 & 0xFF;
+                    unsigned char b = int(col[0]) & 0xFF;
+
+                    // Mapping ROS Elastic
+                    //          +x  +z
+                    //          +y  -x
+                    //          +z  -y
+                    p.x = point.z();
+                    p.y = -point.x();
+                    p.z = -point.y();
+                    p.r = r;
+                    p.g = g;
+                    p.b = b;
+                    p.normal_x = nor.x();
+                    p.normal_y = nor.y();
+                    p.normal_z = nor.z();
+                    cloud->points.push_back(p);
+                    ++cloud->width;
+                }
+            }
+
+            // Process with voxel grid filter
+            PointCloudT::Ptr cloud_filtered = boost::make_shared<PointCloudT>();
+            // Create the filtering object
+            pcl::VoxelGrid<PointT> sor;
+            sor.setInputCloud(cloud);
+            const float leaf_size = gui->voxelGridSize->Get();
+            sor.setLeafSize(leaf_size, leaf_size, leaf_size);
+            sor.filter(*cloud_filtered);
+
+            std::cout << "publishing filtered cloud with " << cloud_filtered->size() << " points (total " << cloud->size() << " points)" << std::endl;
+            cloud_pub.publish(cloud_filtered);
+            do_cloud_publishing = false;
+        }
+    }
+    std::cout << "publish pointcloud thread finished" << std::endl;
+}
+
 

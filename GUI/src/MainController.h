@@ -28,14 +28,7 @@
 #include <tf2_ros/transform_listener.h>
 #include <std_srvs/Empty.h>
 
-#include <pcl_conversions/pcl_conversions.h>
-#include <sensor_msgs/PointCloud2.h>
-#include <pcl_ros/point_cloud.h>
-#include <pcl/io/pcd_io.h>
-
-using PointT = pcl::PointXYZRGBNormal;
-using PointCloudT = pcl::PointCloud<PointT>;
-
+#include <mutex>
 
 #ifndef MAINCONTROLLER_H_
 #define MAINCONTROLLER_H_
@@ -92,11 +85,27 @@ class MainController
 
         Resize * resizeStream;
     private:
+      bool running = true;
+
       // Publish pose
       tf2_ros::TransformBroadcaster tf_b;
       ros::Publisher pose_pub;
+
+      // ===== Pointcloud publishing
+      std::mutex cloud_mutex;
+      // Download from GPU, fills mapData and mapSize
+      bool download_cloud = false;
+      Eigen::Vector4f* mapData = nullptr;
+      unsigned int mapSize = 0;
+      // Set to true to publish the latest available cloud
+      bool do_cloud_publishing = false;
+      // Cloud publishing thread. Reads mapData, converts it to pcl::Pointcloud,
+      // downsample using a voxel grid filter
+      std::thread cloud_publishing_thread;
+      void publishPointCloudThread();
+
       ros::Publisher cloud_pub;
-      PointCloudT::Ptr cloud = boost::make_shared<PointCloudT>();
+
       // Reset service
       ros::ServiceServer reset_service;
 

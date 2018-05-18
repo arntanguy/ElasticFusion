@@ -2,16 +2,16 @@
  * This file is part of ElasticFusion.
  *
  * Copyright (C) 2015 Imperial College London
- * 
- * The use of the code within this file and all code within files that 
- * make up the software that is ElasticFusion is permitted for 
- * non-commercial purposes only.  The full terms and conditions that 
- * apply to the code within this file are detailed within the LICENSE.txt 
- * file and at <http://www.imperial.ac.uk/dyson-robotics-lab/downloads/elastic-fusion/elastic-fusion-license/> 
- * unless explicitly stated.  By downloading this file you agree to 
+ *
+ * The use of the code within this file and all code within files that
+ * make up the software that is ElasticFusion is permitted for
+ * non-commercial purposes only.  The full terms and conditions that
+ * apply to the code within this file are detailed within the LICENSE.txt
+ * file and at <http://www.imperial.ac.uk/dyson-robotics-lab/downloads/elastic-fusion/elastic-fusion-license/>
+ * unless explicitly stated.  By downloading this file you agree to
  * comply with these terms.
  *
- * If you wish to use any of this code for commercial purposes then 
+ * If you wish to use any of this code for commercial purposes then
  * please email researchcontracts.engineering@imperial.ac.uk.
  *
  */
@@ -117,6 +117,9 @@ class GUI
             reset = new pangolin::Var<bool>("ui.Reset", false, false);
             flipColors = new pangolin::Var<bool>("ui.Flip RGB", false, true);
 
+            publishCloud = new pangolin::Var<bool>("ui.Publish Cloud", true, true);
+            voxelGridSize = new pangolin::Var<float>("ui.Voxel Grid Filter", 0.01, 0.001, 0.1);
+
             if(liveCap)
             {
                 autoSettings = new pangolin::Var<bool>("ui.Auto Settings", true, true);
@@ -196,6 +199,7 @@ class GUI
             delete drawFxaa;
             delete fastOdom;
             delete icpWeight;
+            delete voxelGridSize;
             delete pyramid;
             delete rgbOnly;
             delete totalFernDefs;
@@ -206,6 +210,7 @@ class GUI
             delete totalPoints;
             delete frameToFrameRGB;
             delete flipColors;
+            delete publishCloud;
             delete drawFilteredCloud;
             delete drawNormals;
             delete drawColors;
@@ -384,6 +389,7 @@ class GUI
                             * save,
                             * reset,
                             * flipColors,
+                            * publishCloud,
                             * rgbOnly,
                             * pyramid,
                             * so3,
@@ -415,7 +421,8 @@ class GUI
                                    * logProgress;
         pangolin::Var<float> * confidenceThreshold,
                              * depthCutoff,
-                             * icpWeight;
+                             * icpWeight,
+                             * voxelGridSize;
 
         pangolin::DataLog resLog, inLog;
         pangolin::Plotter * resPlot,
