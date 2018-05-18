@@ -46,6 +46,7 @@ MainController::MainController(int argc, char * argv[], std::shared_ptr<ros::Nod
     pose_pub = nh->advertise<geometry_msgs::PoseWithCovarianceStamped>("/ElasticFusion/rgb_pose", 1000);
     cloud_pub = nh->advertise<PointCloudT>("/ElasticFusion/cloud", 1);
     reset_service = nh->advertiseService("/ElasticFusion/reset", &MainController::reset_callback, this);
+    point_cloud_request_service = nh->advertiseService("/ElasticFusion/point_cloud_request", &MainController::point_cloud_request_callback, this);
 
     std::string empty;
     iclnuim = Parse::get().arg(argc, argv, "-icl", empty) > -1;
@@ -653,6 +654,13 @@ bool MainController::reset_callback(std_srvs::Empty::Request &req, std_srvs::Emp
 {
     std::cout << "Reset service called, resetting ElasticFusion" << std::endl;
     *gui->reset = true;
+    return true;
+}
+
+bool MainController::point_cloud_request_callback(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res)
+{
+    std::cout << "Point cloud request called, downloading and publishing latest cloud" << std::endl;
+    download_cloud = true;
     return true;
 }
 

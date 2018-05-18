@@ -108,9 +108,11 @@ class MainController
 
       // Reset service
       ros::ServiceServer reset_service;
+      ros::ServiceServer point_cloud_request_service;
 
     protected:
       bool reset_callback(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
+      bool point_cloud_request_callback(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
 };
 
 #endif /* MAINCONTROLLER_H_ */
