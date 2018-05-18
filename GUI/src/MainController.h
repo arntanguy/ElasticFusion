@@ -28,6 +28,15 @@
 #include <tf2_ros/transform_listener.h>
 #include <std_srvs/Empty.h>
 
+#include <pcl_conversions/pcl_conversions.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <pcl_ros/point_cloud.h>
+#include <pcl/io/pcd_io.h>
+
+using PointT = pcl::PointXYZRGBNormal;
+using PointCloudT = pcl::PointCloud<PointT>;
+
+
 #ifndef MAINCONTROLLER_H_
 #define MAINCONTROLLER_H_
 
@@ -86,6 +95,8 @@ class MainController
       // Publish pose
       tf2_ros::TransformBroadcaster tf_b;
       ros::Publisher pose_pub;
+      ros::Publisher cloud_pub;
+      PointCloudT::Ptr cloud = boost::make_shared<PointCloudT>();
       // Reset service
       ros::ServiceServer reset_service;
 

@@ -36,6 +36,14 @@ find_package(CUDA REQUIRED)
 find_package(OpenNI2 REQUIRED)
 find_package(efusion REQUIRED)
 find_package(SuiteSparse REQUIRED)
+
+
+## ROS Dependencies
+# for pointcloud publishing
+find_package(PCL 1.7 REQUIRED REQUIRED)
+include_directories(${PCL_INCLUDE_DIRS})
+link_directories(${PCL_LIBRARY_DIRS})
+add_definitions(${PCL_DEFINITIONS})
 add_required_dependency(tf2_eigen)
 add_required_dependency(tf2_ros)
 add_required_dependency(eigen_conversions)
@@ -103,6 +111,7 @@ target_link_libraries(ElasticFusion
                       ${SUITESPARSE_LIBRARIES}
                       ${BLAS_LIBRARIES}
                       ${LAPACK_LIBRARIES}
+                      ${PCL_LIBRARIES}
 )
 pkg_config_use_dependency(ElasticFusion tf2_eigen)
 pkg_config_use_dependency(ElasticFusion tf2_ros)

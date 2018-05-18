@@ -33,6 +33,9 @@ MainController::MainController(int argc, char * argv[], std::shared_ptr<ros::Nod
 {
 
     pose_pub = nh->advertise<geometry_msgs::PoseWithCovarianceStamped>("/ElasticFusion/rgb_pose", 1000);
+    cloud_pub = nh->advertise<PointCloudT>("/ElasticFusion/cloud", 1);
+    cloud = boost::make_shared<PointCloudT>();
+    cloud->header.frame_id = "map";
     reset_service = nh->advertiseService("/ElasticFusion/reset", &MainController::reset_callback, this);
 
     std::string empty;
@@ -438,6 +441,56 @@ void MainController::run()
                                                            gui->drawTimes->Get(),
                                                            eFusion->getTick(),
                                                            eFusion->getTimeDelta());
+
+              // XXX Publish when needed, thread publishing,
+              // use voxel grid filter
+              static int i=0;
+              if(i++ % 50 == 0)
+              {
+                cloud->clear();
+                // XXX move somewhere else
+                Eigen::Vector4f* mapData = eFusion->getGlobalModel().downloadMap();
+                // Number of points in the map
+                const unsigned int map_size = eFusion->getGlobalModel().lastCount();
+
+                // Construct a pcl pointcloud from it
+                cloud->header.stamp = ros::Time::now().toNSec() / 1000;
+                cloud->width = map_size;
+                cloud->height = 1;
+                cloud->is_dense = true;
+
+                PointT p;
+                for (size_t i = 0; i < map_size; ++i)
+                {
+                  // need to initialize data
+                  const Eigen::Vector4f& point = mapData[(i * 3) + 0];
+                  const Eigen::Vector4f& col = mapData[(i * 3) + 1];
+                  const Eigen::Vector4f nor = -1 * mapData[(i * 3) + 2];
+
+                  // unpack color
+                  unsigned char r = int(col[0]) >> 16 & 0xFF;
+                  unsigned char g = int(col[0]) >> 8 & 0xFF;
+                  unsigned char b = int(col[0]) & 0xFF;
+
+                  // Mapping ROS Elastic
+                  //          +x  +z
+                  //          +y  -x
+                  //          +z  -y
+                  p.x = point.z();
+                  p.y = -point.x();
+                  p.z = -point.y();
+                  p.r = r;
+                  p.g = g;
+                  p.b = b;
+                  p.normal_x = nor.x();
+                  p.normal_y = nor.y();
+                  p.normal_z = nor.z();
+                  cloud->points.push_back(p);
+                }
+
+                std::cout << "publishing cloud with " << cloud->size() << " points" << std::endl;
+                cloud_pub.publish(cloud);
+              }
             }
             glFinish();
             TOCK("Global");
